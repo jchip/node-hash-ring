@@ -8,7 +8,10 @@ var nodes = {
     "127.0.0.3:8080": 1
 };
 
-var ring = new HashRing(nodes);
+var hasher = process.argv[3] || "md5";
+console.log("testing with hasher", hasher);
+
+var ring = new HashRing(nodes, hasher);
 
 var iterations = 100000;
 
