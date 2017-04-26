@@ -65,8 +65,8 @@ HashRing::HashRing(Local<Object> weight_hash, bool useMd5) : ObjectWrap(), useMd
   uint32_t weight_total = 0;
   size_t num_servers = node_names->Length();
 
-  vector<NodeInfo> node_list;
-  node_list.reserve(num_servers);
+  ring.setNumServers(num_servers);
+  vector<NodeInfo> &node_list = ring.node_list;
   size_t max_id_len = 0;
   // Construct the server list based on the weight hash
   for (size_t i = 0; i < num_servers; i++)
@@ -78,41 +78,47 @@ HashRing::HashRing(Local<Object> weight_hash, bool useMd5) : ObjectWrap(), useMd
     {
       max_id_len = id_len;
     }
-    NodeInfo node(*utfVal, weight_hash->Get(node_name)->Uint32Value());
-    node_list.push_back(node);
-    weight_total += node.weight;
+    node_list[i].set(*utfVal, weight_hash->Get(node_name)->Uint32Value());
+    weight_total += node_list[i].weight;
   }
 
-  ring.setNumServers(num_servers);
-  vector<Vpoint> &vpoints = ring.vpoints;
-  size_t j, k;
-  int vpoint_idx = 0;
+  int num_vpoints = 0;
   max_id_len += 50;
-  for (j = 0; j < num_servers; j++)
+
+  vector<size_t> num_replicas;
+  num_replicas.resize(num_servers);
+
+  for (size_t j = 0; j < num_servers; j++)
   {
     float percent = (float)node_list[j].weight / (float)weight_total;
-    size_t num_replicas = floorf(percent * 40.0 * (float)num_servers);
-    for (k = 0; k < num_replicas; k++)
+    num_replicas[j] = floorf(percent * 40.0 * (float)num_servers);
+    num_vpoints += num_replicas[j] * 4;
+  }
+
+  ring.setNumPoints(num_vpoints);
+  vector<Vpoint> &vpoints = ring.vpoints;
+
+  size_t vpoint_idx = 0;
+  for (size_t node_idx = 0; node_idx < num_servers; node_idx++)
+  {
+    for (size_t k = 0; k < num_replicas[node_idx]; k++)
     {
       char ss[max_id_len];
-      int ss_len = sprintf(ss, "%s-%d", node_list[j].id.c_str(), (int)k);
+      int ss_len = sprintf(ss, "%s-%d", node_list[node_idx].id.c_str(), (int)k);
       unsigned char digest[16];
       hash_digest(ss, ss_len, digest);
-      int m;
-      for (m = 0; m < 4; m++)
+      for (size_t m = 0; m < 4; m++)
       {
-        vpoints[vpoint_idx].point = (digest[3 + m * 4] << 24) |
-                                    (digest[2 + m * 4] << 16) |
-                                    (digest[1 + m * 4] << 8) |
-                                    digest[m * 4];
-        vpoints[vpoint_idx].id = node_list[j].id;
-        vpoint_idx++;
+        vpoints[vpoint_idx++].set(node_idx,
+                                  (digest[3 + m * 4] << 24) |
+                                      (digest[2 + m * 4] << 16) |
+                                      (digest[1 + m * 4] << 8) |
+                                      digest[m * 4]);
       }
     }
   }
-  qsort((void *)&vpoints[0], vpoint_idx, sizeof(Vpoint), (compfn)vpoint_compare);
 
-  ring.setNumPoints(vpoint_idx);
+  qsort((void *)&vpoints[0], num_vpoints, sizeof(Vpoint), (compfn)vpoint_compare);
 }
 
 HashRing::~HashRing()
@@ -184,14 +190,14 @@ void HashRing::GetNode(const FunctionCallbackInfo<Value> &args)
     mid = (int)((low + high) / 2);
     if (mid == ring.num_points)
     {
-      args.GetReturnValue().Set(String::NewFromUtf8(isolate, vpoints[0].id.c_str())); // We're at the end. Go to 0
+      args.GetReturnValue().Set(String::NewFromUtf8(isolate, ring.getNodeId(vpoints[0]).c_str())); // We're at the end. Go to 0
       return;
     }
     mid_val = vpoints[mid].point;
     mid_val_1 = mid == 0 ? 0 : vpoints[mid - 1].point;
     if (h <= mid_val && h > mid_val_1)
     {
-      args.GetReturnValue().Set(String::NewFromUtf8(isolate, vpoints[mid].id.c_str()));
+      args.GetReturnValue().Set(String::NewFromUtf8(isolate, ring.getNodeId(vpoints[mid]).c_str()));
       return;
     }
     if (mid_val < h)
@@ -205,7 +211,7 @@ void HashRing::GetNode(const FunctionCallbackInfo<Value> &args)
 
     if (low > high)
     {
-      args.GetReturnValue().Set(String::NewFromUtf8(isolate, vpoints[0].id.c_str()));
+      args.GetReturnValue().Set(String::NewFromUtf8(isolate, ring.getNodeId(vpoints[0]).c_str()));
       return;
     }
   }

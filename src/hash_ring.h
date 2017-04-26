@@ -10,11 +10,44 @@ namespace HashRing
 {
 typedef int (*compfn)(const void *, const void *);
 
-typedef struct
+class NodeInfo
 {
-  unsigned int point;
+public:
   std::string id;
-} Vpoint;
+  unsigned int weight;
+
+  void set(const char *idStr, unsigned int w)
+  {
+    id = idStr;
+    weight = w;
+  }
+
+  NodeInfo() : weight(0)
+  {
+  }
+
+  ~NodeInfo()
+  {
+  }
+};
+
+class Vpoint
+{
+public:
+  unsigned int point;
+  size_t node_index;
+
+  void set(size_t idx, unsigned int pt)
+  {
+    node_index = idx;
+    point = pt;
+  }
+
+  Vpoint() : point(0), node_index(0)
+  {
+  }
+  ~Vpoint() {}
+};
 
 class Ring
 {
@@ -22,6 +55,7 @@ public:
   int num_points;
   int num_servers;
   std::vector<Vpoint> vpoints;
+  std::vector<NodeInfo> node_list;
   Ring() : num_points(0), num_servers(0)
   {
   }
@@ -29,28 +63,21 @@ public:
   void setNumServers(int ns)
   {
     num_servers = ns;
-    vpoints.resize(ns * 160);
+    node_list.resize(ns);
   }
 
   void setNumPoints(int np)
   {
     num_points = np;
+    vpoints.resize(np);
+  }
+
+  const std::string &getNodeId(const Vpoint &vpoint)
+  {
+    return node_list[vpoint.node_index].id;
   }
 
   ~Ring()
-  {
-  }
-};
-
-class NodeInfo
-{
-public:
-  std::string id;
-  int weight;
-  NodeInfo(const char *idStr, int weight) : id(idStr), weight(weight)
-  {
-  }
-  ~NodeInfo()
   {
   }
 };
