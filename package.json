@@ -11,7 +11,7 @@
   "license": "MIT",
   "main": "./index.js",
   "scripts": {
-    "test": "npm run test-md5 && npm run test-murmur && npm run test-leak",
+    "test": "npm run build && npm run test-md5 && npm run test-murmur && npm run test-leak",
     "test-md5": "expresso test/test_distribution.js md5",
     "test-murmur": "expresso test/test_distribution.js murmur",
     "test-leak": "node --expose-gc test/test_leak.js",
